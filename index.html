@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planning salle réunion</title>
+
+<style>
+body { font-family: Arial; margin:20px; }
+table { border-collapse: collapse; width:100%; }
+th, td { border:1px solid #ccc; padding:8px; text-align:center; }
+textarea { width:100%; height:50px; border:none; resize:none; }
+.busy { background:#f8caca; }
+.selected { outline:2px solid orange; }
+</style>
+
+</head>
+
+<body>
+
+<h2>Planning salle réunion</h2>
+<div id="status"></div>
+
+<table id="table"></table>
+
+<script>
+
+const URL = "https://script.google.com/macros/s/AKfycbxQSkYuWd1G7KlFINv1vZdsrjmBi0uZ1FiUztjR_MTJIGf9KYIXVhyeY0xUQHW5RBpDuQ/exec";
+
+const days = ["2026-04-20","2026-04-21","2026-04-22","2026-04-23","2026-04-24"];
+const hours = ["09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00"];
+
+let data = {};
+let selected = null;
+
+function key(day,hour){
+  return day+"__"+hour;
+}
+
+async function load(){
+  document.getElementById("status").innerText="Chargement...";
+  const res = await fetch(URL+"?action=read");
+  const rows = await res.json();
+
+  data = {};
+
+  rows.slice(1).forEach(r=>{
+    data[r[0]] = {
+      text:r[3],
+      reserved:r[4]=="true"
+    };
+  });
+
+  draw();
+  document.getElementById("status").innerText="OK";
+}
+
+async function save(k,day,hour,text,reserved){
+  await fetch(URL+
+    "?action=write"+
+    "&key="+encodeURIComponent(k)+
+    "&day="+day+
+    "&time="+hour+
+    "&text="+encodeURIComponent(text)+
+    "&reserved="+reserved
+  );
+}
+
+function draw(){
+  let html="<tr><th></th>";
+
+  days.forEach(d=> html+="<th>"+d+"</th>");
+  html+="</tr>";
+
+  hours.forEach(h=>{
+    html+="<tr><th>"+h+"</th>";
+
+    days.forEach(d=>{
+      const k = key(d,h);
+      const cell = data[k] || {text:"",reserved:false};
+
+      html+=`
+      <td class="${cell.reserved?'busy':''}" onclick="selectCell(this,'${k}','${d}','${h}')">
+        <textarea oninput="editCell('${k}','${d}','${h}',this.value)">${cell.text||""}</textarea>
+      </td>`;
+    });
+
+    html+="</tr>";
+  });
+
+  document.getElementById("table").innerHTML = html;
+}
+
+function selectCell(td,k,d,h){
+  document.querySelectorAll("td").forEach(x=>x.classList.remove("selected"));
+  td.classList.add("selected");
+  selected = {k,d,h,td};
+}
+
+function editCell(k,d,h,value){
+  if(value.trim()==""){
+    delete data[k];
+  } else {
+    data[k] = {text:value,reserved:false};
+  }
+  save(k,d,h,value,false);
+}
+
+function reserve(){
+  if(!selected) return;
+
+  const {k,d,h} = selected;
+  const txt = data[k]?.text || "";
+
+  data[k] = {text:txt,reserved:true};
+  save(k,d,h,txt,true);
+
+  load();
+}
+
+function clearCell(){
+  if(!selected) return;
+
+  const {k,d,h} = selected;
+  delete data[k];
+  save(k,d,h,"",false);
+
+  load();
+}
+
+setInterval(load,15000);
+
+load();
+
+</script>
+
+<br>
+<button onclick="reserve()">Réserver</button>
+<button onclick="clearCell()">Vider</button>
+
+</body>
+</html>
